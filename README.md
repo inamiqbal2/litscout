@@ -10,8 +10,11 @@ It runs inside the Claude desktop app. You only chat; no programming, no termina
 
 ## What you need
 
-- The **Claude desktop app** (https://claude.ai/download) on Mac or Windows, signed in with a paid Claude plan
-  that includes Claude Code (the app's **Code** tab).
+- The **Claude desktop app** (https://claude.ai/download) on Mac or Windows, with access to its **Code** tab.
+- A **paid Claude plan (Pro or higher) is strongly recommended.** litscout is built to use as little as possible
+  (the computer does the searching and picks out the important parts of each paper; Claude reads only those), but a
+  project still means reading 15 papers. On the free plan the limit usually runs out partway.
+  Nothing is lost: every step is saved, so when your limit resets, open the folder again and type `continue`.
 - That's it. Claude installs anything else it needs the first time (it may ask you to click "Install" once).
 
 ## Getting started (about 5 minutes)
@@ -33,7 +36,10 @@ It runs inside the Claude desktop app. You only chat; no programming, no termina
 | Say | What happens |
 |---|---|
 | `start` (or just type your research question) | A new project, from the questions to the outlook |
+| `continue` | Picks up where it stopped (for example after your Claude limit reset) |
 | `find more papers on <topic>` | Searches again and adds the best new papers |
+| `go deeper` | Follows the references and citations of the best papers |
+| `read <paper> in full` | Reads one paper cover to cover instead of its key parts |
 | `show my reading list` | The papers Claude picked, one line each |
 | `add <paper>` / `drop <paper>` | Changes the list |
 | `I added PDFs` | After you download papers yourself; Claude reads them too |
@@ -63,6 +69,8 @@ read by Claude, so do not use it on documents you are not allowed to share.
 
 - It finds what OpenAlex (250M+ works) and arXiv index; check the list against what you know.
 - It reads text, not figures. Scanned PDFs without a text layer are used from their abstract.
+- To save usage, Claude reads each paper's abstract, conclusions and the passages most relevant to your
+  question, not every page. Say `read <paper> in full` for the ones that matter most.
 - Treat the outlook as a well-organised first draft, and check cited pages before quoting.
 
 ---

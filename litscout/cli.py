@@ -289,6 +289,7 @@ def main(argv=None):
     p.add_argument("question", nargs="*"); p.set_defaults(f=cmd_ask)
     from . import tools
     tools.register(sub, ws_arg)
+    tools.register_light(sub, ws_arg)
     p = sub.add_parser("setup", help="save your Anthropic API key")
     p.add_argument("--force", action="store_true"); p.set_defaults(f=cmd_setup)
     p = sub.add_parser("start", help="guided mode: asks you everything, step by step")

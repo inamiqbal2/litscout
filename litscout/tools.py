@@ -168,6 +168,7 @@ def cmd_status(a):
     print(f"Candidates: {len(data['candidates'])} "
           f"(unscored {sum(1 for p in data['candidates'] if p.get('score') is None)}); selected {len(sel)}")
     print(f"PDFs: {sum(1 for p in sel if fetch_mod.safe_name(p['id']) in pdfs)} of {len(sel)}; "
+          f"digests: {sum(1 for p in sel if (ws.root / 'digests' / (str(p.get('key')) + '.md')).exists())} of {len(sel)}; "
           f"cards: {sum(1 for p in sel if p.get('key') in cards)} of {len(sel)}; "
           f"outlook: {'yes' if ws.path('outlook.md').exists() else 'no'}")
 
@@ -194,3 +195,104 @@ def register(sub, ws_arg):
     p.add_argument("query", nargs="+"); p.add_argument("--k", type=int, default=15); p.set_defaults(f=cmd_grep)
     p = sub.add_parser("status", help="[no model] where a project stands"); ws_arg(p)
     p.set_defaults(f=cmd_status)
+
+
+# ---------------- low-usage helpers ----------------
+
+def _rank_local(ws, papers):
+    """Rank papers on this computer (no model): keyword match of title+abstract
+    against the question, context and queries, with a small citation bonus."""
+    import math
+    from .qa import BM25
+    pr = ws.load("project.json") or {}
+    data = _data(ws)
+    query = " ".join([pr.get("question", ""), pr.get("context", "")] + data.get("queries", []))
+    docs = [f"{p['title']} {p['title']} {p.get('abstract') or ''}" for p in papers]
+    if not docs:
+        return []
+    bm = BM25(docs)
+    from .qa import tokens
+    q = tokens(query)
+    out = []
+    for i, tf in enumerate(bm.tf):
+        L = len(bm.toks[i]) or 1
+        s = sum(bm.idf[w] * tf[w] * 2.5 / (tf[w] + 1.5 * (0.25 + 0.75 * L / bm.avg)) for w in set(q) if w in tf)
+        s *= 1 + 0.1 * math.log1p(papers[i].get("cited_by") or 0)
+        if not papers[i].get("abstract"):
+            s *= 0.6
+        out.append((s, papers[i]))
+    out.sort(key=lambda x: -x[0])
+    return [p for _, p in out]
+
+
+def cmd_shortlist(a):
+    """Print only the best N unscored candidates, compactly, for Claude to judge."""
+    ws = Workspace(a.workspace)
+    unscored = [p for p in _data(ws)["candidates"] if p.get("score") is None]
+    top = _rank_local(ws, unscored)[:a.n]
+    for p in top:
+        ab = " ".join((p.get("abstract") or "(no abstract)").split())[:a.chars]
+        print(f"[{p['id']}] {p['title']} ({p.get('year')}; cited {p.get('cited_by')}) :: {ab}")
+    print(f"-- {len(top)} of {len(unscored)} unscored shown (best keyword matches first)")
+
+
+def _conclusion(pages):
+    import re as _re
+    pat = _re.compile(r"\n\s*(\d+\.?\s*)?(conclusions?|concluding remarks|summary and conclusions?|summary)\s*\n", _re.I)
+    for i in range(len(pages) - 1, -1, -1):
+        m = pat.search("\n" + pages[i])
+        if m:
+            text = ("\n" + pages[i])[m.end():]
+            if len(text) < 1500 and i + 1 < len(pages):
+                text += " " + pages[i + 1]
+            return i + 1, " ".join(text.split())
+    return None, ""
+
+
+def cmd_digest(a):
+    """A short extract per selected paper (abstract, conclusions, the passages most
+    relevant to the question, with page numbers). Claude reads these instead of whole papers."""
+    from .qa import BM25
+    ws = Workspace(a.workspace)
+    pr = ws.load("project.json") or {}
+    data = _data(ws)
+    sel = [p for p in data["candidates"] if p.get("selected") and p.get("key")]
+    if not sel:
+        raise SystemExit("Run extract first.")
+    ddir = ws._dir("digests")
+    query = pr.get("question", "") + " " + pr.get("context", "")
+    total = 0
+    for p in sel:
+        if a.only and p["key"] not in a.only:
+            continue
+        doc = read_mod.extract_text(ws, p)
+        parts = [f"# {p['title']}", f"{p['key']} | {', '.join((p.get('authors') or [])[:4])} ({p.get('year')}) | "
+                 f"{p.get('doi') or ''} | text: {doc['kind']}, {len(doc['pages'])} pages", "",
+                 "ABSTRACT: " + " ".join((p.get("abstract") or "(none)").split())]
+        if doc["kind"] == "fulltext":
+            cp, ctext = _conclusion(doc["pages"])
+            if ctext:
+                parts += ["", f"CONCLUSIONS (p. {cp}): " + ctext[:a.chars]]
+            chunks = [c for c in read_mod.chunks_for(ws, p)]
+            if chunks:
+                bm = BM25([c["text"] for c in chunks])
+                parts.append("")
+                parts.append("MOST RELEVANT PASSAGES:")
+                for i in bm.top(query, a.passages):
+                    c = chunks[i]
+                    parts.append(f"(p. {c['page']}) {c['text'][:900]}")
+        text = "\n".join(parts) + "\n"
+        (ddir / f"{p['key']}.md").write_text(text)
+        total += len(text)
+    print(f"{len(sel)} digests in digests/, about {total // 4000}k tokens in total "
+          f"(full texts would be about {sum(len(t) for p in sel for t in read_mod.extract_text(ws, p)['pages']) // 4000}k).")
+
+
+def register_light(sub, ws_arg):
+    p = sub.add_parser("shortlist", help="[no model] best N unscored candidates, compact"); ws_arg(p)
+    p.add_argument("--n", type=int, default=40); p.add_argument("--chars", type=int, default=300)
+    p.set_defaults(f=cmd_shortlist)
+    p = sub.add_parser("digest", help="[no model] short extract per paper for low-usage reading"); ws_arg(p)
+    p.add_argument("--chars", type=int, default=2500); p.add_argument("--passages", type=int, default=4)
+    p.add_argument("--only", nargs="*", help="only these paper keys")
+    p.set_defaults(f=cmd_digest)

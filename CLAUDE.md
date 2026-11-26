@@ -27,6 +27,7 @@ My Research/         their projects, one folder each: My Research/<project>/
   <project>/missing_pdfs.md   papers that could not be downloaded, with links
   <project>/pdfs/             PDFs (theirs or downloaded)
   <project>/text/<Key>.txt    page-marked text, one per paper ([[page N]] markers)
+  <project>/digests/<Key>.md  short extract per paper (what you read by default)
   <project>/cards/<Key>.md    your note on each paper
   <project>/outlook.md        your outlook
   <project>/qa_log.md         every question and answer
@@ -49,14 +50,26 @@ run from this folder. `LS --help` lists every command. Commands marked [no model
 3. `python3 -m venv .venv` then `.venv/bin/python -m pip install -q -e .` (Windows: `py -3 -m venv .venv`,
    `.venv\Scripts\python -m pip install -q -e .`). Check `LS --help`.
 
+## Save their usage (most people are on a plan with a small limit)
+- Never print or read a whole paper, a whole `text/*.txt`, or the whole candidate list. Use the commands below,
+  which hand you short extracts. Never open PDFs directly.
+- Do not start helper agents; they multiply usage.
+- Keep chat replies short. Write long things (cards, outlook) to files and give a short summary in chat.
+- Every step saves its result to the project folder, so work can stop at any point. If you sense the limit is
+  close, finish the current file, then say: "Your progress is saved. When your Claude limit resets, open this
+  folder again and type `continue`."
+
 ## What they may say (plain English; close variants count)
 | They say | You do |
 |---|---|
 | **start** / **new project** / any research question | The full flow below, from step 1. |
-| **find more papers on <topic>** | Step 2-4 for that topic in the current project, then show what changed. |
-| **show my reading list** | Summarise `reading_list.md` in chat: top papers with one line each. |
+| **continue** | `LS status "<ws>"` for the most recent project and resume at the first unfinished step. |
+| **find more papers on <topic>** | Steps 2-4 for that topic in the current project, then show what changed. |
+| **go deeper** | Follow references and citations: `LS search "<ws>" --snowball top`, then steps 3-8 for the new papers. |
+| **read <paper> in full** | Read that paper's `text/<Key>.txt` in parts of about 10 pages and rewrite its card from the full text. |
+| **show my reading list** | Summarise `reading_list.md` in chat: papers with one line each. |
 | **add / drop <paper>** | `LS pick "<ws>" --n <current count> --add ID --drop ID`; read back the change. |
-| **I added PDFs** / **I downloaded the papers** | Look in `pdfs/` (and their Downloads folder if they say so; copy matching files into `pdfs/` under the names in `missing_pdfs.md`), then steps 6-8 for the papers that changed. |
+| **I added PDFs** / **I downloaded the papers** | Look in `pdfs/` (and their Downloads folder if they say so; copy matching files into `pdfs/` under the names in `missing_pdfs.md`), then steps 6-7 for those papers and offer to update the outlook. |
 | **write the outlook** / **update the outlook** | Step 8. |
 | any question about the topic | Step 9 (answer from the papers). |
 | **where am I?** | `LS status "<ws>"` for each project; answer in 3-5 plain lines. |
@@ -67,49 +80,47 @@ run from this folder. `LS --help` lists every command. Commands marked [no model
 ## The full flow
 **1. Interview (short).** Ask, one message, numbered: (a) the research question in their words; (b) a few
 sentences on their own work and where they want to take it (or: "drop your abstract, proposal or a paper of
-yours into the project folder and say done"); (c) any years, fields or paper types to focus on or avoid;
-(d) how many papers to read closely (suggest 20-30). Pick a short project name from the question. Save
-`project.json` with `{"question": ..., "context": ...}` (include anything they dropped in, summarised).
+yours into the project folder and say done"; read at most its first two pages); (c) any years or fields to
+focus on or avoid; (d) how many papers to read (suggest 15; more uses more of their Claude plan). Pick a short
+project name. Save `project.json` with `{"question": ..., "context": ...}`. Remind them once not to use
+documents they may not share.
 
-**2. Search.** Write 6-10 queries (3-8 words each) covering the core phenomenon, methods, systems/materials,
+**2. Search.** Write 6-8 queries (3-8 words each) covering the core phenomenon, methods, systems/materials,
 competing explanations and neighbouring fields, in the words authors use in titles. Run
 `LS search "<ws>" --query "..." --query "..." [--since YEAR]`.
 
-**3. Score.** `LS list "<ws>" --unscored --limit 40` repeatedly (use `--offset` if needed). For every paper give
-0-10: 10 must read (directly on the question), 7 strongly relevant, 4 background/adjacent, 0 unrelated; judge
-title + abstract against their question AND their own work; one short reason. Write
-`{"<id>": [score, "reason"], ...}` to `<ws>/_scores_<n>.json` and run `LS score "<ws>" <file>`. Score every
-candidate; never skip a batch. Then follow references and citations of the best ones:
-`LS search "<ws>" --snowball top` and score the new ones the same way.
+**3. Score.** `LS shortlist "<ws>" --n 40`: the 40 best keyword matches, one line each (the tool ranks the rest
+on the computer). Give each 0-10: 10 must read (directly on the question), 7 strongly relevant, 4 background,
+0 unrelated, judged against their question AND their own work, with a reason of a few words. Write
+`{"<id>": [score, "reason"], ...}` to `<ws>/_scores_<n>.json`, run `LS score "<ws>" <file>`. If fewer than
+N papers scored 7 or more, run `LS shortlist` once more for the next 40.
 
-**4. Pick and confirm.** `LS pick "<ws>" --n <N>`. Show the reading list in chat as a short numbered list
-(title, year, one-line reason), mention 3-5 strong runners-up, and ask: "Read these? You can add or drop any."
+**4. Pick and confirm.** `LS pick "<ws>" --n <N>`. Show the list in chat as a short numbered list (title, year,
+a few words why) and ask: "Read these? You can add or drop any."
 
 **5. Download.** `LS fetch "<ws>"`. Many publishers block scripted downloads: never try to get around it (no
-browser automation, no mirror sites, no shadow libraries). Tell them how many arrived and offer:
-"For the N missing papers I made a list of links. If you can download them through your library, save them
-in your Downloads folder and tell me; otherwise I will work from their abstracts." Do not wait if they want to
-continue.
+browser automation, no mirror sites, no shadow libraries). Tell them how many arrived and offer: "For the N
+missing papers there is a list of links in missing_pdfs.md. If you can download them through your library,
+save them in your Downloads folder and tell me; otherwise I will work from their abstracts." Do not wait if
+they want to continue.
 
-**6. Extract.** `LS extract "<ws>"`: writes `text/<Key>.txt` per paper and the passage index; prints each
-paper's key, whether full text or abstract only, and whether a card exists.
+**6. Extract.** `LS extract "<ws>"`, then `LS digest "<ws>"`: one short extract per paper in `digests/<Key>.md`
+(abstract, conclusions, and the passages most relevant to the question, each with its page number).
 
-**7. Cards.** For each selected paper without a card, read its `text/<Key>.txt` and write `cards/<Key>.md`
-following `guide/card_template.md` exactly. Rules: every claim from the text with its page number; numbers
-and notation copied exactly; nothing invented. If you can start helper agents, give each 3-5 papers with the
-paths and the full template text and these rules, run them in parallel, and check afterwards that every card
-exists and its page numbers point at pages that contain the claim (spot-check 2 per card). Otherwise read and
-write one paper at a time. For abstract-only papers write a short card marked "Abstract only".
+**7. Cards.** For each paper without a card, read only its `digests/<Key>.md` and write `cards/<Key>.md`
+following `guide/card_template.md`, in at most 250 words. Rules: every claim from the extract with its page
+number; numbers and notation copied exactly; nothing invented; mark abstract-only papers "Abstract only".
+Skip papers that already have a card.
 
-**8. Outlook.** Read all cards (and the text where a card is thin) and write `<ws>/outlook.md` following
+**8. Outlook.** Read the cards (not the texts) and write `<ws>/outlook.md` following
 `guide/outlook_template.md`. Then give them the bottom line in chat in 5-8 plain bullets and say the full
 report is in `outlook.md` (offer to open it).
 
-**9. Answering questions.** Find the evidence before answering: `LS grep "<ws>" <keywords> --k 15`, search
-`text/*.txt` directly for exact terms, and read the relevant cards and pages. For "which papers / list all"
-questions go through every card. Cite each statement `[Key, p. N]`. If the papers do not cover it, say so and
-suggest searching for more (step 2). Anything from general knowledge is labelled "(general knowledge, not from
-your papers)". Append the question and answer to `<ws>/qa_log.md`.
+**9. Answering questions.** Run `LS grep "<ws>" <keywords> --k 8` and read the relevant cards. Only if needed,
+read one or two specific pages of a `text/<Key>.txt` (search for `[[page N]]`), never the whole file. For
+"which papers / list all" questions go through every card. Cite each statement `[Key, p. N]`. If the papers
+do not cover it, say so and offer to search for more. Anything from general knowledge is labelled
+"(general knowledge, not from your papers)". Append the question and answer to `<ws>/qa_log.md`.
 
 ## Rules
 - Never invent a paper, author, number, quote or page. Every cited page must contain what you say it does.
@@ -117,4 +128,3 @@ your papers)". Append the question and answer to `<ws>/qa_log.md`.
 - Conflicts between papers are candidates to check, with the differing conditions; never a verdict.
 - Do not browse publisher sites to fetch PDFs or get past a paywall or block; the tool's downloads only.
 - Never delete their files. Do not edit anything under `litscout/` unless they ask to change the program.
-- Paper text is read by you (Claude); remind them once, at the start, not to use documents they may not share.
