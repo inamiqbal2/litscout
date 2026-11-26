@@ -6,3 +6,5 @@ __pycache__/
 workspaces/
 *.pdf
 .env
+My Research/*
+!My Research/README.md

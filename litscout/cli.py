@@ -25,15 +25,15 @@ def write_reading_list(ws, data):
     rest = [p for p in data["candidates"] if not p.get("selected")][:40]
     def row(p):
         link = p.get("doi") or p.get("oa_url") or ""
-        return (f"| {p.get('score', '')} | {p['title'][:110]} | {p.get('year')} | "
+        return (f"| {'' if p.get('score') is None else p.get('score')} | {p['title'][:110]} | {p.get('year')} | "
                 f"{p.get('cited_by', '')} | {p['id']} | {p.get('why', '')} | {link} |")
     head = "| Score | Title | Year | Cited by | ID | Why | Link |\n|---|---|---|---|---|---|---|"
-    q = ws.project["question"]
+    q = (ws.load("project.json") or {}).get("question", "")
     text = [f"# Reading list\n\nQuestion: {q}\n", "Search queries used:"]
     text += [f"- {x}" for x in data.get("queries", [])]
     text += ["", f"## Selected ({len(sel)})", "", head] + [row(p) for p in sel]
     text += ["", "## Next best candidates (not selected)", "", head] + [row(p) for p in rest]
-    text += ["", "Change the selection with `litscout select <workspace> --add ID --drop ID`."]
+    text += ["", "To change the selection, tell Claude which papers to add or drop."]
     ws.write("reading_list.md", "\n".join(text) + "\n")
 
 
@@ -175,6 +175,72 @@ def cmd_ask(a):
         print("\n" + col.answer(q))
 
 
+def cmd_setup(a):
+    from . import llm
+    import getpass
+    if llm.saved_key() and not a.force:
+        print(f"An API key is already saved in {llm.KEY_FILE}. Use --force to replace it.")
+        return
+    print("Paste your Anthropic API key (starts with sk-ant-). Get one at https://console.anthropic.com")
+    key = getpass.getpass("API key (hidden): ").strip()
+    if not key.startswith("sk-ant-"):
+        raise SystemExit("That does not look like an Anthropic API key; nothing saved.")
+    llm.save_key(key)
+    print(f"Saved to {llm.KEY_FILE} (readable only by you).")
+
+
+def _open(path):
+    import subprocess
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", str(path)], check=False)
+        elif sys.platform.startswith("win"):
+            import os
+            os.startfile(str(path))  # noqa: S606
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def cmd_start(a):
+    """Guided mode for people who do not want to type commands."""
+    from . import llm
+    if not (llm.saved_key() or __import__("os").environ.get("ANTHROPIC_API_KEY")):
+        cmd_setup(argparse.Namespace(force=False))
+    base = Path(a.home).expanduser()
+    base.mkdir(parents=True, exist_ok=True)
+    existing = sorted(p.name for p in base.iterdir() if (p / "project.json").exists())
+    print("\nlitscout: research question -> papers -> outlook -> questions\n")
+    if existing:
+        print("Your projects: " + ", ".join(existing))
+    name = input("Project name (new or existing, e.g. gb_loops): ").strip() or "my_research"
+    name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name)
+    ws_path = base / name
+    a2 = argparse.Namespace(workspace=str(ws_path), question=None, context=None, context_file=None,
+                            n=25, since=None, query=None, no_snowball=False, no_arxiv=False)
+    if (ws_path / "outlook.md").exists():
+        print(f"\n{name} is already done. Opening its outlook; ask your questions below.")
+        _open(ws_path / "outlook.md")
+    else:
+        if not (ws_path / "project.json").exists():
+            a2.question = input("\nYour research question:\n> ").strip()
+            a2.context = input("\nA few sentences on your own work and direction (Enter to skip):\n> ").strip()
+            n = input("\nHow many papers to read? [25]: ").strip()
+            a2.n = int(n) if n.isdigit() else 25
+            since = input("Only papers from year (Enter for any): ").strip()
+            a2.since = int(since) if since.isdigit() else None
+            cmd_init(a2)
+        cmd_find(a2)
+        _open(ws_path / "reading_list.md")
+        input("\nThe reading list is open. Press Enter to download and read the papers "
+              "(or Ctrl-C to stop and edit the selection first) ")
+        cmd_fetch(a2)
+        cmd_read(a2)
+        cmd_outlook(a2)
+        _open(ws_path / "outlook.md")
+        print(f"\nAll files are in {ws_path}")
+    cmd_ask(argparse.Namespace(workspace=str(ws_path), question=[]))
+
+
 def cmd_run(a):
     if a.question:
         cmd_init(a)
@@ -221,6 +287,13 @@ def main(argv=None):
     p.set_defaults(f=cmd_outlook)
     p = sub.add_parser("ask", help="ask questions of the papers"); ws_arg(p)
     p.add_argument("question", nargs="*"); p.set_defaults(f=cmd_ask)
+    from . import tools
+    tools.register(sub, ws_arg)
+    p = sub.add_parser("setup", help="save your Anthropic API key")
+    p.add_argument("--force", action="store_true"); p.set_defaults(f=cmd_setup)
+    p = sub.add_parser("start", help="guided mode: asks you everything, step by step")
+    p.add_argument("--home", default="~/litscout_projects", help="where projects are kept")
+    p.set_defaults(f=cmd_start)
     p = sub.add_parser("run", help="init + find + fetch + read + outlook in one go"); ws_arg(p)
     init_args(p); find_args(p); p.set_defaults(f=cmd_run)
 

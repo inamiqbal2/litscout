@@ -13,11 +13,32 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _client = None
 
 
+KEY_FILE = os.path.expanduser("~/.litscout/api_key")
+
+
+def saved_key() -> str | None:
+    try:
+        with open(KEY_FILE) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def save_key(key: str) -> None:
+    os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+    with open(KEY_FILE, "w") as f:
+        f.write(key.strip() + "\n")
+    os.chmod(KEY_FILE, 0o600)
+
+
 def client():
     global _client
     if _client is None:
-        # Reads ANTHROPIC_API_KEY (or an `ant auth login` profile) from the environment.
-        _client = anthropic.Anthropic()
+        # ANTHROPIC_API_KEY in the environment wins; otherwise the key saved by `litscout setup`.
+        if not os.environ.get("ANTHROPIC_API_KEY") and saved_key():
+            _client = anthropic.Anthropic(api_key=saved_key())
+        else:
+            _client = anthropic.Anthropic()
     return _client
 
 

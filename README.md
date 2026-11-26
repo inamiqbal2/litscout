@@ -1,108 +1,84 @@
 # litscout
 
-Research question → reading list → outlook report → ask questions of the papers.
+**Not a programmer? Get litscout from the download page: [inamiqbal2.github.io/litscout](https://inamiqbal2.github.io/litscout/)**, one button, no GitHub needed.
 
-1. **Find papers.** You give a research question and a few sentences about your own work.
-   Claude writes search queries, litscout searches **OpenAlex** (250M+ scholarly works) and
-   **arXiv**, follows references and citations of the best hits, and Claude scores every
-   abstract for relevance. Result: `reading_list.md`.
-2. **Outlook.** litscout downloads the open-access PDFs, Claude reads each paper and writes
-   a structured note (findings with page numbers, methods, numbers, limits, relevance to you),
-   then writes `outlook.md`: bottom line, knowledge map, agreements, conflicts, gaps,
-   opportunities for your work, and a reading order.
-3. **Ask.** `litscout ask` answers questions from the papers, citing `[Key, p. N]`.
+**From a research question to the papers that answer it.** Tell Claude what you want to find out and what
+you work on. litscout searches the scholarly literature, Claude reads the papers that matter, writes an
+outlook for your work, and then answers your questions with the paper and page each answer came from.
 
-## Install
+It runs inside the Claude desktop app. You only chat; no programming, no terminal, no API key.
 
-Needs Python 3.10+ and an Anthropic API key (https://console.anthropic.com).
+## What you need
 
-```bash
-git clone https://github.com/inamiqbal2/litscout.git
-cd litscout
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-export ANTHROPIC_API_KEY=sk-ant-...
-```
+- The **Claude desktop app** (https://claude.ai/download) on Mac or Windows, signed in with a paid Claude plan
+  that includes Claude Code (the app's **Code** tab).
+- That's it. Claude installs anything else it needs the first time (it may ask you to click "Install" once).
 
-## Use
+## Getting started (about 5 minutes)
 
-One command for steps 1 and 2:
+1. **Download litscout** from the [download page](https://inamiqbal2.github.io/litscout/) and unzip it.
+   Move the `litscout` folder to your Documents (not Downloads, which gets cleaned out).
+2. **Open the folder in the Claude app.** Go to the **Code** tab and open the `litscout` folder.
+3. **Type `start`.** Claude sets itself up, then asks you four short questions: your research question, a few
+   sentences about your own work, any years or fields to focus on, and how many papers to read closely.
+4. **Check the reading list** Claude shows you, add or drop papers if you like, and say go.
+5. **Read your outlook.** Claude downloads the free papers, reads them, and writes `outlook.md`: the bottom
+   line, a map of the themes, where papers agree and conflict, gaps, opportunities for your work, and a
+   reading order.
+6. **Ask anything.** "Which papers measured X?", "What explains the disagreement on Y?", "What has nobody
+   tried yet?" Answers cite `[Paper, p. N]` and say so when your papers do not cover it.
 
-```bash
-litscout run my_topic \
-  -q "How do dislocation loops change the mobility of migrating grain boundaries?" \
-  -c "I run MD simulations of Al bicrystals and want to know which loop types and boundary types are unexplored."
-```
+## Things you can say
 
-(`-c` can be replaced by `--context-file my_abstract.txt`.)
-
-Then read, in the `my_topic/` folder:
-
-| File | What it is |
+| Say | What happens |
 |---|---|
-| `reading_list.md` | Selected papers with score and reason, plus the next 40 candidates |
-| `missing_pdfs.md` | Selected papers that could not be downloaded, with links |
-| `cards/*.md` | One note per paper |
-| `outlook.md` | The outlook report and knowledge map |
+| `start` (or just type your research question) | A new project, from the questions to the outlook |
+| `find more papers on <topic>` | Searches again and adds the best new papers |
+| `show my reading list` | The papers Claude picked, one line each |
+| `add <paper>` / `drop <paper>` | Changes the list |
+| `I added PDFs` | After you download papers yourself; Claude reads them too |
+| `update the outlook` | Rewrites the outlook with everything read so far |
+| `where am I?` | Where each project stands |
+| `show me the folder` | Opens the project folder |
 
-Ask questions:
+## Papers that will not download
 
-```bash
-litscout ask my_topic "Which papers report boundary mobility values, and under what conditions?"
-litscout ask my_topic          # interactive; answers are also saved to qa_log.md
-```
+Many publishers block automatic downloads, and litscout does not try to get around that. Free copies (arXiv,
+open repositories, open-access journals) download by themselves. For the rest, Claude gives you a list of
+links: download them through your library in your browser, then say `I added PDFs`. Until then those papers
+are read from their abstracts, and the outlook says which ones.
 
-### Step by step (to review the list before reading)
+## Where things are
 
-```bash
-litscout init my_topic -q "..." -c "..."
-litscout find my_topic --n 25 --since 2010   # edit the selection, then:
-litscout select my_topic --add W123456 --drop W987654
-litscout fetch my_topic
-litscout add my_topic ~/Downloads/paper.pdf --id W987654   # papers you got yourself
-litscout add my_topic ~/Downloads/my_own_notes.pdf --title "Group report 2025"
-litscout read my_topic
-litscout outlook my_topic
-```
+Everything about your research is in `My Research/`, one folder per question:
+`reading_list.md`, `outlook.md`, `cards/` (one note per paper), `pdfs/`, and `qa_log.md` (every question you
+asked, with the answer).
 
-Options for `find` / `run`: `--n` papers to select (default 25), `--since YEAR`,
-`--query "..."` to add your own search query (repeatable), `--no-snowball`, `--no-arxiv`.
+## Cost and privacy
 
-## Missing PDFs
-
-Many publishers block scripted downloads, and litscout does not try to get around that.
-It downloads from arXiv and open repositories; for the rest it writes `missing_pdfs.md`
-with a link and the file name to save as. Download them in your browser (through your
-library if needed), save them into `my_topic/pdfs/` under that name, and run
-`litscout read my_topic` and `litscout outlook my_topic` again. Until then those papers
-are used from their abstracts only, and the outlook says so.
-
-## Model and cost
-
-Default model: `claude-opus-5-5`. Change with `export LITSCOUT_MODEL=claude-sonnet-5-5`
-(cheaper). A 25-paper run sends every selected paper's full text to the model once, plus
-the abstracts of a few hundred candidates; expect a few dollars per run. Each question
-costs a few cents. Notes and text are cached, so re-running only processes new papers.
-
-Optional: `export OPENALEX_MAILTO=you@example.org` puts OpenAlex requests in its faster
-"polite pool".
+litscout is free (MIT license). You pay for your Claude plan. The text of the papers and your questions are
+read by Claude, so do not use it on documents you are not allowed to share.
 
 ## Limits
 
-- It only finds what OpenAlex and arXiv index; check the reading list against what you know.
-- Relevance scores come from abstracts. Always skim the list before trusting the outlook.
-- Scanned PDFs without a text layer are used from their abstract only.
-- Figures, plots and images are not read.
-- Answers are only as good as the papers in the workspace; check cited pages before quoting.
-- Paper text is sent to the Anthropic API. Do not use it on documents you may not share.
+- It finds what OpenAlex (250M+ works) and arXiv index; check the list against what you know.
+- It reads text, not figures. Scanned PDFs without a text layer are used from their abstract.
+- Treat the outlook as a well-organised first draft, and check cited pages before quoting.
 
-## Test without an API key
+---
 
-```bash
-python tests/smoke_test.py /tmp/litscout_test
-```
+## For programmers
 
-Runs the whole pipeline with real searches and downloads but a stand-in model.
+The Python package (`pip install -e .`, Python 3.10+) has two sets of commands:
+
+- **Model-free tools** that Claude drives (`litscout search | list | score | pick | fetch | extract | grep | status`);
+  the procedure Claude follows is in `CLAUDE.md`.
+- **A standalone mode** that calls the Anthropic API itself, for use without the Claude app:
+  `litscout setup` (saves an API key), then `litscout start` (guided) or
+  `litscout run <folder> -q "question" -c "your work"` and `litscout ask <folder>`.
+  Default model `claude-opus-5-5`; set `LITSCOUT_MODEL` to change it.
+
+`python tests/smoke_test.py /tmp/litscout_test` runs the standalone pipeline with real searches and a
+stand-in model.
 
 License: MIT.

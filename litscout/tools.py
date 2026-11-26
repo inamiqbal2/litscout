@@ -1,0 +1,196 @@
+"""Model-free commands. Claude (in the Claude app) does the thinking; these do the
+mechanical work: search, download, PDF text, passage search. No API key needed."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import requests
+
+from . import fetch as fetch_mod
+from . import read as read_mod
+from . import search
+from .workspace import Workspace
+
+
+def _data(ws):
+    return ws.load("candidates.json") or {"queries": [], "candidates": []}
+
+
+def cmd_search(a):
+    ws = Workspace(a.workspace)
+    data = _data(ws)
+    have = {search._norm(p["title"]) for p in data["candidates"]}
+    new = []
+    for q in a.query or []:
+        try:
+            new += search.openalex_search(q, per_page=a.per_query, since=a.since)
+        except requests.RequestException as e:
+            print(f"OpenAlex failed for '{q}': {e}")
+        if not a.no_arxiv:
+            try:
+                new += search.arxiv_search(q, n=15)
+            except requests.RequestException as e:
+                print(f"arXiv failed for '{q}': {e}")
+        data["queries"].append(q)
+    if a.snowball:
+        ids = a.snowball if a.snowball != ["top"] else [
+            p["id"] for p in sorted(data["candidates"], key=lambda p: -(p.get("score") or 0))
+            if p["source"] == "openalex"][:5]
+        byid = {p["id"]: p for p in data["candidates"]}
+        for i in ids:
+            p = byid.get(i)
+            try:
+                if p and p.get("referenced_works"):
+                    new += search.openalex_by_ids(p["referenced_works"][:30])
+                new += search.openalex_citing(i, n=15)
+            except requests.RequestException as e:
+                print(f"snowball failed for {i}: {e}")
+    new = [p for p in search.merge(new) if search._norm(p["title"]) not in have
+           and (not a.since or (p.get("year") or 0) >= a.since)]
+    for p in new:
+        p["score"] = None
+    data["candidates"] += new
+    ws.save("candidates.json", data)
+    unscored = sum(1 for p in data["candidates"] if p.get("score") is None)
+    print(f"{len(new)} new papers; {len(data['candidates'])} in total; {unscored} not yet scored.")
+
+
+def cmd_list(a):
+    ws = Workspace(a.workspace)
+    ps = _data(ws)["candidates"]
+    if a.unscored:
+        ps = [p for p in ps if p.get("score") is None]
+    if a.selected:
+        ps = [p for p in ps if p.get("selected")]
+    ps = ps[a.offset:a.offset + a.limit]
+    for p in ps:
+        print(f"[{p['id']}] {p['title']} ({p.get('year')}; cited {p.get('cited_by')})")
+        if not a.short:
+            print((p.get("abstract") or "(no abstract)")[:a.chars])
+            print()
+    print(f"-- {len(ps)} shown")
+
+
+def cmd_score(a):
+    ws = Workspace(a.workspace)
+    data = _data(ws)
+    raw = json.loads(Path(a.file).read_text())
+    if isinstance(raw, list):
+        raw = {r["id"]: [r["score"], r.get("why", "")] for r in raw}
+    n = 0
+    for p in data["candidates"]:
+        if p["id"] in raw:
+            s, why = raw[p["id"]] if isinstance(raw[p["id"]], list) else (raw[p["id"]], "")
+            p["score"], p["why"] = float(s), why
+            n += 1
+    ws.save("candidates.json", data)
+    left = sum(1 for p in data["candidates"] if p.get("score") is None)
+    print(f"Scored {n}. {left} still unscored.")
+
+
+def write_reading_list(ws, data):
+    from .cli import write_reading_list as w
+    w(ws, data)
+
+
+def cmd_pick(a):
+    ws = Workspace(a.workspace)
+    data = _data(ws)
+    for p in data["candidates"]:
+        if p.get("source") != "local":
+            p["selected"] = False
+    ranked = sorted([p for p in data["candidates"] if p.get("score") is not None],
+                    key=lambda p: (-p["score"], -(p.get("cited_by") or 0)))
+    for p in ranked[:a.n]:
+        p["selected"] = True
+    for i in a.add or []:
+        for p in data["candidates"]:
+            if p["id"] == i:
+                p["selected"] = True
+    for i in a.drop or []:
+        for p in data["candidates"]:
+            if p["id"] == i:
+                p["selected"] = False
+    data["candidates"].sort(key=lambda p: (not p.get("selected"), -(p.get("score") or 0)))
+    ws.save("candidates.json", data)
+    write_reading_list(ws, data)
+    print(f"{sum(1 for p in data['candidates'] if p.get('selected'))} selected -> {ws.path('reading_list.md')}")
+
+
+def cmd_extract(a):
+    """Page-marked text for every selected paper + the passage index."""
+    ws = Workspace(a.workspace)
+    data = _data(ws)
+    sel = [p for p in data["candidates"] if p.get("selected")]
+    used = {p["key"] for p in data["candidates"] if p.get("key")}
+    for p in sel:
+        if not p.get("key"):
+            p["key"] = read_mod.citekey(p, used)
+    ws.save("candidates.json", data)
+    chunks = []
+    print("key | id | text | pages | file")
+    for p in sel:
+        doc = read_mod.extract_text(ws, p)
+        txt = ws.text / f"{p['key']}.txt"
+        header = (f"{p['title']}\n{', '.join(p.get('authors') or [])} ({p.get('year')}) "
+                  f"{p.get('doi') or ''}\nText: {doc['kind']}\n")
+        body = "".join(f"\n[[page {i}]]\n{t}" for i, t in enumerate(doc["pages"], 1)) \
+            if doc["kind"] == "fulltext" else "\n[[abstract]]\n" + doc["pages"][0]
+        txt.write_text(header + body)
+        chunks += read_mod.chunks_for(ws, p)
+        card = "done" if (ws.cards / f"{p['key']}.md").exists() else "no card yet"
+        print(f"{p['key']} | {p['id']} | {doc['kind']} | {len(doc['pages'])} | text/{txt.name} | {card}")
+    ws.save("index.json", chunks)
+    print(f"{len(chunks)} passages indexed.")
+
+
+def cmd_grep(a):
+    from .qa import BM25
+    ws = Workspace(a.workspace)
+    chunks = ws.load("index.json", [])
+    if not chunks:
+        raise SystemExit("No index yet: run extract first.")
+    bm = BM25([c["text"] for c in chunks])
+    for i in bm.top(" ".join(a.query), a.k):
+        c = chunks[i]
+        print(f"[{c['key']}{', p. ' + str(c['page']) if c['page'] else ''}] {c['text']}\n")
+
+
+def cmd_status(a):
+    ws = Workspace(a.workspace)
+    pr = ws.load("project.json") or {}
+    data = _data(ws)
+    sel = [p for p in data["candidates"] if p.get("selected")]
+    pdfs = {f.stem for f in ws.pdfs.glob("*.pdf")}
+    cards = {f.stem for f in ws.cards.glob("*.md")}
+    print("Question:", pr.get("question"))
+    print(f"Candidates: {len(data['candidates'])} "
+          f"(unscored {sum(1 for p in data['candidates'] if p.get('score') is None)}); selected {len(sel)}")
+    print(f"PDFs: {sum(1 for p in sel if fetch_mod.safe_name(p['id']) in pdfs)} of {len(sel)}; "
+          f"cards: {sum(1 for p in sel if p.get('key') in cards)} of {len(sel)}; "
+          f"outlook: {'yes' if ws.path('outlook.md').exists() else 'no'}")
+
+
+def register(sub, ws_arg):
+    p = sub.add_parser("search", help="[no model] search OpenAlex/arXiv and add candidates"); ws_arg(p)
+    p.add_argument("--query", action="append"); p.add_argument("--since", type=int)
+    p.add_argument("--per-query", type=int, default=40); p.add_argument("--no-arxiv", action="store_true")
+    p.add_argument("--snowball", nargs="*", help="IDs to follow references/citations of, or 'top'")
+    p.set_defaults(f=cmd_search)
+    p = sub.add_parser("list", help="[no model] print candidates"); ws_arg(p)
+    p.add_argument("--unscored", action="store_true"); p.add_argument("--selected", action="store_true")
+    p.add_argument("--limit", type=int, default=30); p.add_argument("--offset", type=int, default=0)
+    p.add_argument("--chars", type=int, default=1200); p.add_argument("--short", action="store_true")
+    p.set_defaults(f=cmd_list)
+    p = sub.add_parser("score", help="[no model] load relevance scores from a JSON file"); ws_arg(p)
+    p.add_argument("file"); p.set_defaults(f=cmd_score)
+    p = sub.add_parser("pick", help="[no model] select the top N scored papers"); ws_arg(p)
+    p.add_argument("--n", type=int, default=25); p.add_argument("--add", nargs="*"); p.add_argument("--drop", nargs="*")
+    p.set_defaults(f=cmd_pick)
+    p = sub.add_parser("extract", help="[no model] page-marked text + passage index"); ws_arg(p)
+    p.set_defaults(f=cmd_extract)
+    p = sub.add_parser("grep", help="[no model] best-matching passages for a query"); ws_arg(p)
+    p.add_argument("query", nargs="+"); p.add_argument("--k", type=int, default=15); p.set_defaults(f=cmd_grep)
+    p = sub.add_parser("status", help="[no model] where a project stands"); ws_arg(p)
+    p.set_defaults(f=cmd_status)

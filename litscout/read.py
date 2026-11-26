@@ -5,7 +5,11 @@ import json
 import re
 import unicodedata
 
+import logging
+
 from pypdf import PdfReader
+
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 from . import llm
 from .fetch import safe_name

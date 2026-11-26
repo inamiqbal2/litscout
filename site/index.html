@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>litscout: from a research question to the papers that answer it</title>
+<meta name="description" content="Free, open-source literature helper. Give it your research question; it finds the papers, reads them, writes an outlook for your work, and answers your questions with page citations.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%235b8def'/%3E%3Ccircle cx='28' cy='28' r='13' stroke='white' stroke-width='6' fill='none'/%3E%3Cpath d='M38 38l12 12' stroke='white' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0d1119; --surface: #1b212d; --surface2: #262e3d; --ink: #eef0f5; --muted: #9aa3b4;
+    --line: #303848; --blue: #5b8def; --blue-hi: #7aa4f5; --gold: #f4ba40; --coral: #f6785c;
+    --radius: 18px; --max: 1060px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 17px/1.6 "Avenir Next", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; }
+  a { color: var(--blue-hi); }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 16px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 22px; color: var(--ink); text-decoration: none; }
+  .brand svg { width: 36px; height: 36px; }
+  .top nav a { color: var(--muted); text-decoration: none; margin-left: 20px; font-size: 15px; }
+  .top nav a:hover { color: var(--ink); }
+
+  .hero { text-align: center; padding: 40px 0 20px; }
+  .hero h1 { font-size: clamp(32px, 6vw, 56px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.5px; }
+  .hero h1 em { font-style: normal; color: var(--blue); }
+  .lead { color: var(--muted); font-size: clamp(17px, 2.2vw, 21px); max-width: 720px; margin: 0 auto 30px; }
+  .cta { display: inline-flex; align-items: center; gap: 12px; background: var(--blue); color: #08101f;
+         font-weight: 700; font-size: 21px; padding: 18px 34px; border-radius: 999px; text-decoration: none;
+         box-shadow: 0 10px 30px rgba(91,141,239,.28); transition: transform .12s ease, background .12s ease; }
+  .cta:hover { background: var(--blue-hi); transform: translateY(-1px); }
+  .cta svg { width: 24px; height: 24px; }
+  .cta2 { display: inline-flex; align-items: center; color: var(--ink); font-weight: 600; font-size: 18px;
+          padding: 16px 26px; border-radius: 999px; text-decoration: none; border: 2px solid var(--line); margin: 12px 0 0 10px; }
+  .cta2:hover { border-color: var(--blue); }
+  .cta-note { color: var(--muted); font-size: 14px; margin-top: 16px; }
+
+  /* flow illustration */
+  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 44px auto 0; max-width: 980px; }
+  .node { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 18px;
+          text-align: center; position: relative; }
+  .node svg { width: 54px; height: 54px; margin-bottom: 8px; }
+  .node b { display: block; font-size: 18px; }
+  .node span { color: var(--muted); font-size: 14px; }
+  .node:not(:last-child)::after { content: "\2192"; position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
+          color: var(--blue); font-size: 22px; z-index: 1; }
+
+  section { padding: 56px 0 0; }
+  h2 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 22px; text-align: center; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+  .num { display: inline-flex; width: 38px; height: 38px; border-radius: 50%; background: var(--blue); color: #08101f;
+         font-weight: 800; align-items: center; justify-content: center; margin-bottom: 10px; }
+  .step h3 { margin: 0 0 6px; font-size: 20px; }
+  .step p { margin: 0; color: var(--muted); font-size: 16px; }
+  code { background: var(--surface2); padding: 2px 7px; border-radius: 6px; font-size: 14px; color: var(--ink);
+         overflow-wrap: anywhere; }
+
+  .files { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .file { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--blue);
+          border-radius: 14px; padding: 18px 20px; }
+  .file b { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; color: var(--gold); }
+  .file p { margin: 6px 0 0; color: var(--muted); font-size: 16px; }
+
+  .qa { max-width: 820px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 22px 24px; font-size: 16px; }
+  .qa .q { color: var(--blue-hi); font-weight: 600; }
+  .qa .a { color: var(--ink); margin-top: 8px; }
+  .qa .cite { color: var(--gold); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+  .qa .tag { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; }
+  .box h3 { margin: 0 0 10px; font-size: 19px; }
+  .box ul { margin: 0; padding-left: 20px; color: var(--muted); }
+  .box li { margin-bottom: 6px; }
+  .price { font-size: 17px; color: var(--muted); max-width: 760px; margin: 0 auto; text-align: center; }
+  .price b { color: var(--ink); }
+
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px;
+            margin: 0 auto 12px; max-width: 820px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--muted); margin: 10px 0 0; }
+
+  .final { text-align: center; padding: 64px 0 40px; }
+  footer { color: var(--muted); font-size: 14px; text-align: center; padding: 30px 0 40px; border-top: 1px solid var(--line); }
+
+  @media (max-width: 820px) {
+    .flow { grid-template-columns: 1fr 1fr; }
+    .node:nth-child(2)::after { display: none; }
+    .steps, .files, .twocol { grid-template-columns: 1fr; }
+    .top nav { display: none; }
+  }
+  @media (max-width: 480px) {
+    .flow { grid-template-columns: 1fr; }
+    .node::after { display: none; }
+    .cta { font-size: 19px; padding: 16px 26px; }
+    .cta2 { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#5b8def"/><circle cx="28" cy="28" r="13" stroke="white" stroke-width="6" fill="none"/><path d="M38 38l12 12" stroke="white" stroke-width="7" stroke-linecap="round"/></svg>
+      litscout
+    </a>
+    <nav><a href="#how">How it works</a><a href="#get">What you get</a><a href="#faq">Questions</a>
+      <a href="https://github.com/inamiqbal2/litscout">Source</a></nav>
+  </header>
+
+  <div class="hero">
+    <h1>You have the question.<br><em>litscout finds the papers.</em></h1>
+    <p class="lead">Describe what you want to find out and what you work on. litscout searches the
+      scholarly literature, reads the papers that matter, writes an outlook for your work, and then
+      answers your questions with the page each answer came from.</p>
+    <a class="cta" href="https://github.com/inamiqbal2/litscout/releases/latest/download/litscout.zip">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
+      Download litscout
+    </a>
+    <a class="cta2" href="#how">How to set it up</a>
+    <p class="cta-note">Free and open source (MIT). Runs in the Claude desktop app on Mac and Windows. You only chat.</p>
+
+    <div class="flow" aria-label="What litscout does">
+      <div class="node">
+        <svg viewBox="0 0 64 64" fill="none" stroke="#5b8def" stroke-width="4" stroke-linecap="round"><path d="M20 22a12 12 0 1 1 16 11v7"/><circle cx="36" cy="50" r="2.5" fill="#5b8def"/></svg>
+        <b>Your question</b><span>and your direction</span>
+      </div>
+      <div class="node">
+        <svg viewBox="0 0 64 64" fill="none" stroke="#f4ba40" stroke-width="4" stroke-linecap="round"><circle cx="27" cy="27" r="14"/><path d="M38 38l14 14"/></svg>
+        <b>Search</b><span>hundreds of papers ranked</span>
+      </div>
+      <div class="node">
+        <svg viewBox="0 0 64 64" fill="none" stroke="#f6785c" stroke-width="4" stroke-linejoin="round"><path d="M12 14h16a4 4 0 0 1 4 4v32a4 4 0 0 0-4-4H12z"/><path d="M52 14H36a4 4 0 0 0-4 4v32a4 4 0 0 1 4-4h16z"/></svg>
+        <b>Read</b><span>a note on every paper</span>
+      </div>
+      <div class="node">
+        <svg viewBox="0 0 64 64" fill="none" stroke="#7fd1a8" stroke-width="4" stroke-linecap="round"><circle cx="16" cy="44" r="5"/><circle cx="32" cy="18" r="5"/><circle cx="48" cy="40" r="5"/><path d="M19 40l10-17M35 22l10 14M21 44h22"/></svg>
+        <b>Outlook &amp; answers</b><span>cited to the page</span>
+      </div>
+    </div>
+  </div>
+
+  <section id="how">
+    <h2>Three steps. No coding.</h2>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><h3>Download and unzip</h3>
+        <p>Click <b>Download litscout</b> above, unzip it, and move the <code>litscout</code> folder to your Documents.</p></div>
+      <div class="step"><div class="num">2</div><h3>Open it in Claude</h3>
+        <p>In the <a href="https://claude.ai/download">Claude desktop app</a>, go to the <b>Code</b> tab and open the <code>litscout</code> folder.</p></div>
+      <div class="step"><div class="num">3</div><h3>Type “start”</h3>
+        <p>Claude sets itself up, asks your research question and a few lines about your work, shows you the reading list, reads the papers, and writes your outlook.</p></div>
+    </div>
+    <p class="cta-note" style="text-align:center">You need the Claude desktop app with a paid Claude plan that includes the Code tab.
+      Nothing else: no programming, no terminal, no API key. Programmers: see the <a href="https://github.com/inamiqbal2/litscout#readme">README</a>.</p>
+  </section>
+
+  <section id="get">
+    <h2>What you get</h2>
+    <div class="files">
+      <div class="file"><b>reading_list.md</b><p>The papers worth reading, each with a relevance score and one line on why. You can add or drop papers before anything is read.</p></div>
+      <div class="file"><b>cards/</b><p>One note per paper: findings with page numbers, methods, materials, key numbers, limits, and how it bears on your work.</p></div>
+      <div class="file"><b>outlook.md</b><p>Bottom line, a map of the themes, where papers agree and conflict, gaps, opportunities for your own work, and a reading order.</p></div>
+      <div class="file"><b>ask</b><p>Type any question about your papers. Answers cite the paper and page, and say so when the papers do not cover it.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ask your papers anything</h2>
+    <div class="qa">
+      <div class="q">? Which papers measured boundary mobility, and at what temperatures?</div>
+      <div class="a">Three papers report mobility values. One gives values from 600 to 900 K for a single boundary type
+        <span class="cite">[Smith2019, p. 6]</span>; another measures it at room temperature in thin films
+        <span class="cite">[Lee2021, p. 4]</span>. The rest study migration without reporting a mobility.</div>
+      <div class="tag">Illustration of the answer format; the names and values are made up.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="twocol">
+      <div class="box"><h3>Where the papers come from</h3><ul>
+        <li><b>OpenAlex</b>, an open index of over 250 million scholarly works, and <b>arXiv</b>.</li>
+        <li>It also follows the references and citations of the best matches.</li>
+        <li>Open-access PDFs download by themselves. For the rest it gives you a list of links: save
+          them from your library into the project folder and it reads them too.</li></ul></div>
+      <div class="box"><h3>What it will never do</h3><ul>
+        <li>Make up a paper, a number or a page number on purpose: every claim is tied to a paper and page you can check.</li>
+        <li>Get around a publisher's download block or paywall.</li>
+        <li>Pretend a paper was read in full when only its abstract was available; the outlook says which ones.</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What it costs</h2>
+    <p class="price"><b>litscout is free.</b> You pay for your Claude plan.</p>
+  </section>
+
+  <section id="faq">
+    <h2>Questions</h2>
+    <details><summary>Do I need to know how to code?</summary>
+      <p>No. You talk to Claude in plain English. Claude runs everything, installs what it needs the first time, and tells you if it ever needs a click from you.</p></details>
+    <details><summary>What can I say to it?</summary>
+      <p>“start”, your research question, “find more papers on …”, “show my reading list”, “drop the third paper”, “I added PDFs”, “update the outlook”, “where am I?”, or any question about your papers.</p></details>
+    <details><summary>Can I add papers I already have?</summary>
+      <p>Yes. Download them through your library as usual and tell Claude “I added PDFs”; it files and reads them. Your own reports and papers can be added the same way.</p></details>
+    <details><summary>Where are my files kept?</summary>
+      <p>On your computer, in the <code>My Research</code> folder inside litscout, one folder per question. Open litscout in Claude again any day and keep asking.</p></details>
+    <details><summary>Is my data private?</summary>
+      <p>The files stay on your computer, but Claude reads the text of the papers and your questions. Do not use it on documents you are not allowed to share.</p></details>
+    <details><summary>Does it read figures?</summary>
+      <p>No. It reads the text of each paper. Scanned PDFs without a text layer are used from their abstract only.</p></details>
+    <details><summary>Can I trust the outlook?</summary>
+      <p>Treat it as a well-organised first draft. Skim the reading list before it reads anything, and check the cited pages before you quote an answer.</p></details>
+  </section>
+
+  <div class="final">
+    <h2>Start with your question.</h2>
+    <a class="cta" href="https://github.com/inamiqbal2/litscout/releases/latest/download/litscout.zip">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
+      Download litscout
+    </a>
+  </div>
+</div>
+<footer>litscout · MIT license · <a href="https://github.com/inamiqbal2/litscout">source on GitHub</a></footer>
+</body>
+</html>

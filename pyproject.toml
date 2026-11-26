@@ -13,6 +13,7 @@ dependencies = [
   "anthropic>=0.70",
   "requests>=2.31",
   "pypdf>=4.0",
+  "fonttools>=4.40",
 ]
 
 [project.scripts]
