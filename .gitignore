@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+# workspaces hold downloaded papers; keep them out of git
+workspaces/
+*.pdf
+.env
